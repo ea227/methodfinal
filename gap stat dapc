@@ -1,0 +1,60 @@
+library(cluster)
+find.clusters.clusGap <- function(x, clust = NULL, n.pca = NULL, n.clust = NULL, #x is genind obj
+                                  method = "kmeans", 
+                                  stat = "gap",  #gap stat
+                                  choose.n.clust = TRUE, 
+                                  criterion = c("firstSEmax", "Tibs2001SEmax", "globalSEmax", "firstmax", "globalmax"), #firstSEmax should be defailt 
+                                  max.n.clust = round(nrow(x@tab)/10),
+                                  B = 100,       #bootstrap samples for clusGap from whitepaper
+                                  n.iter = 1e5, n.start = 10, 
+                                  scale = FALSE, truenames = TRUE) {
+  
+  snps <- adegenet::scaleGen(x, center = TRUE, scale = scale, NA.method = "mean") #scale for PCA
+  
+  if(is.null(n.pca)) {
+    n.pca <- min(nrow(snps), ncol(snps))
+  }
+  pca_input <- ade4::dudi.pca(snps, center = FALSE, scale = FALSE, 
+                         scannf = FALSE, #screeplot, T if wnated
+                         nf = n.pca) #number of kept axes = PCA
+  pca_scores <- pca_input$li #li = principle components, see ?dudi.pca 
+  if(method == "kmeans") {
+    FUNcluster <- function(x, k) { #this needs to be FUNcluster
+      list(cluster = kmeans(x, centers = k, #k=number of clusters
+                            nstart = n.start, #how many random sets should be chosen (this will be = centers = k)
+                            iter.max = n.iter)$cluster)
+    }
+  } 
+  gapstat <- cluster::clusGap(pca_scores, FUN = FUNcluster, #function for matrix, here my pca (can't pass it a dudi.pca)
+                              K.max = max.n.clust, 
+                              B = B) #b=bootstraping, ... optional for kmeans
+
+  if(choose.n.clust) { #for choosing interactively, determines location of maximum f maxSE(f, SE.f) d
+    n.clust <- maxSE(f = gapstat$Tab[, "gap"], 
+                     SE.f = gapstat$Tab[, "SE.sim"],
+                     method = criterion) 
+  }
+  if(method == "kmeans") {
+    res <- kmeans(pca_input, centers = n.clust, nstart = n.start, iter.max = n.iter)
+    grp <- res$cluster
+    }
+
+  names(grp) <- rownames(x)
+  res <- list(Kstat = gapstat, stat = gapstat$Tab, grp = grp, size = table(grp))
+  
+  return(res)
+}
+
+res <- find.clusters.clusGap(swallowtails, stat = "gap", method = "kmeans", 
+                             max.n.clust = 11, B = 50) #gives Error in storage.mode(x) <- "double" : 'list' object cannot be coerced to type 'double'
+dapc5 <- dapc(swallowtails, res$grp)
+#retained 40 pcs, 2 linear discriminants 
+
+scatter(dapc5)
+
+
+
+
+
+
+
