@@ -1,60 +1,222 @@
+setwd("~/Desktop/Spring25/methods in experimental ecology")
+library(tidyverse)
+library(dplyr)
+library(adegenet)
 library(cluster)
-find.clusters.clusGap <- function(x, clust = NULL, n.pca = NULL, n.clust = NULL, #x is genind obj
-                                  method = "kmeans", 
-                                  stat = "gap",  #gap stat
-                                  choose.n.clust = TRUE, 
-                                  criterion = c("firstSEmax", "Tibs2001SEmax", "globalSEmax", "firstmax", "globalmax"), #firstSEmax should be defailt 
-                                  max.n.clust = round(nrow(x@tab)/10),
-                                  B = 100,       #bootstrap samples for clusGap from whitepaper
-                                  n.iter = 1e5, n.start = 10, 
-                                  scale = FALSE, truenames = TRUE) {
-  
-  snps <- adegenet::scaleGen(x, center = TRUE, scale = scale, NA.method = "mean") #scale for PCA
-  
-  if(is.null(n.pca)) {
-    n.pca <- min(nrow(snps), ncol(snps))
-  }
-  pca_input <- ade4::dudi.pca(snps, center = FALSE, scale = FALSE, 
-                         scannf = FALSE, #screeplot, T if wnated
-                         nf = n.pca) #number of kept axes = PCA
-  pca_scores <- pca_input$li #li = principle components, see ?dudi.pca 
-  if(method == "kmeans") {
-    FUNcluster <- function(x, k) { #this needs to be FUNcluster
-      list(cluster = kmeans(x, centers = k, #k=number of clusters
-                            nstart = n.start, #how many random sets should be chosen (this will be = centers = k)
-                            iter.max = n.iter)$cluster)
-    }
-  } 
-  gapstat <- cluster::clusGap(pca_scores, FUN = FUNcluster, #function for matrix, here my pca (can't pass it a dudi.pca)
-                              K.max = max.n.clust, 
-                              B = B) #b=bootstraping, ... optional for kmeans
 
-  if(choose.n.clust) { #for choosing interactively, determines location of maximum f maxSE(f, SE.f) d
-    n.clust <- maxSE(f = gapstat$Tab[, "gap"], 
-                     SE.f = gapstat$Tab[, "SE.sim"],
-                     method = criterion) 
-  }
-  if(method == "kmeans") {
-    res <- kmeans(pca_input, centers = n.clust, nstart = n.start, iter.max = n.iter)
-    grp <- res$cluster
-    }
+#working scripts for final 
+#make into RMD 
 
-  names(grp) <- rownames(x)
-  res <- list(Kstat = gapstat, stat = gapstat$Tab, grp = grp, size = table(grp))
-  
-  return(res)
+
+data("swallowtails")
+#Microsatellites genotypes of 781 swallowtail butterflies from 40 populations in Alberta and British Columbia, Canada. 
+#This data set gives the genotypes of 781 swallowtail butterflies (Papilio machaon species group) for 10 microsatellites markers. The individuals are divided into 40 populations.
+
+#first we want to find groups using BIC. We will start with 40 because we have 40 populations a priori 
+grp <- find.clusters(swallowtails, max.n.clust=40, stat = "BIC")
+#here we specify up to k=40 groups. This graph is a graph of cumulated variance explained by the eigenvalues of the PCA. We will keep 200 PCs going forward.
+
+
+#the next graph shows BIC values for increasing values of k. We use the elbow method (eyeballing for the smallest BIC) which we will say is 11...
+#forAIC we chose 40 and WSS
+
+#dapc with the inferred groups:
+dapc1 <- dapc(swallowtails, grp$grp)
+#here we see the same graph of cumulated variance as in find.cluster. In DAPC, we do not want to use too many PCs. Keeping too many components with respect to the number of individuals can lead to over-fitting and unstability
+#in the membership probabilities. 
+#we keep the first 50. 
+#THen we have a barplot of eigenvalues for the discriminant analysis, askingfor a number of discriminant functions to retain. If we only have a few we keep them, but with more than ~10 groups we should pick the eigs with the most information 
+
+#we save 3
+
+#try w 5 groups, retained 50 PCs and 3 eigs  (keep high clustering number for analyses)
+
+assignplot(dapc1, subset=1:50) #pretty bad assigns 
+
+compoplot(dapc1, posi="bottomright", subset=1:50,
+          txt.leg=paste("Cluster", 1:6), lab="",
+          ncol=1, xlab="individuals", col=funky(6)) #here we can see that there is high admixture per cluster #assign.prop [1] 0.4647887 pretty lowish 
+
+#dapc1_2 with 4 clusters
+grp <- find.clusters(swallowtails, max.n.clust=40, stat = "BIC")
+dapc1_2 <- dapc(swallowtails, grp$grp) #retain 50 PCS, retain all eigs because we have only 4 groups 
+assignplot(dapc1_2, subset=1:50) #pretty bad assigns 
+compoplot(dapc1_2, posi="bottomright", subset=1:50,
+          txt.leg=paste("Cluster", 1:4), lab="",
+          ncol=1, xlab="individuals", col=funky(4))
+scatter(dapc1_2)
+
+#$assign.prop [1] 0.9846351 (Much better!)
+
+
+dapc1
+
+plot1 <- scatter(dapc1)
+
+#try AIC 
+grp <- find.clusters(swallowtails, max.n.clust=40, stat = "AIC")
+#specify up to k=40 groups. 
+#the next graph shows WSS values for increasing values of k. We use the elbow method (eyeballing for the smallest WSS) which we will say is 40...
+
+#try w 4 groups, retained 50 PCs and 3 eigs  
+
+#dapc with the inferred groups:
+dapc2 <- dapc(swallowtails, grp$grp)
+#we keep the first 50. 
+#we saven 2eigs
+assignplot(dapc2, subset=1:50) #pretty bad assigns 
+compoplot(dapc2, posi="bottomright", subset=1:50,
+          txt.leg=paste("Cluster", 1:40), lab="",
+          ncol=1, xlab="individuals", col=funky(40))
+scatter(dapc2)
+#$assign.prop [1] 0.1959027
+dapc2
+plot2 <- scatter(dapc2)
+
+#try WSS
+grp <- find.clusters(swallowtails, max.n.clust=40, stat = "WSS")
+#specify up to k=40 groups. 
+#the next graph shows BIC values for increasing values of k. We use the elbow method (eyeballing for the smallest AIC) which we will say is 40...
+
+grp$size 
+
+#dapc with the inferred groups:
+dapc3 <- dapc(swallowtails, grp$grp)
+#we keep the first 50. 
+#we save 2 eigs
+assignplot(dapc2, subset=1:50) #pretty bad assigns 
+compoplot(dapc2, posi="bottomright", subset=1:50,
+          txt.leg=paste("Cluster", 1:40), lab="",
+          ncol=1, xlab="individuals", col=funky(40))
+
+#$assign.prop [1] 0.2381562 (slightly bettern than AIC)
+dapc3
+plot3 <- scatter(dapc3)
+
+
+
+
+
+#(x, clust = NULL, n.pca = NULL, n.clust = NULL,
+  #method = c("kmeans", "ward"), 
+  #stat = c("AIC", "BIC", "WSS"),
+  #choose.n.clust = TRUE, 
+  #criterion = c("diffNgroup", "min","goesup", "smoothNgoesup", "goodfit"), 
+  #max.n.clust = round(nrow(x@tab)/10),
+  #n.iter = 1e5, n.start = 10, scale = FALSE, 
+  #truenames = TRUE,ldots)
+
+library(cluster)
+
+########### just gap way from github
+
+findclustersGAP <- function(x, clust = NULL, n.pca = NULL, n.clust = NULL, 
+                                 method = "kmeans", 
+                                 stat = "gap",  #gap stat
+                                 choose.n.clust=TRUE, 
+                                 criterion = "firstSEmax",
+                                 max.n.clust = round(nrow(x@tab)/10), n.iter = 1e5, n.start = 10,
+                                 B = 100,       #bootstrap samples for clusGap from whitepaper
+                                 scale = FALSE, truenames = TRUE, ...){
+    
+## CHECKS ##
+if(!is.genind(x)) stop("x must be a genind object.")
+stat <- match.arg(stat)
+
+
+## SOME GENERAL VARIABLES ##
+N <- nrow(x@tab)
+min.n.clust <- 2
+
+## PERFORM PCA ##
+maxRank <- min(dim(x@tab))
+
+X <- scaleGen(x, center = TRUE, scale = scale,
+              NA.method = "mean")
+
+if (is.null(n.pca)) {
+  n.pca <- min(10, nrow(X) - 1, ncol(X))  #  n.pca cant be bigger than the lowest row or col
+}
+pca_input <- ade4::dudi.pca(X, center = FALSE, scale = FALSE, 
+                            scannf = FALSE, #screeplot, T if wnated
+                            nf = n.pca) #number of kept axes = PCA
+pca_scores <- pca_input$li #li = principle components, see ?dudi.pca 
+
+if(method == "kmeans") #need to define this first fo rerror in nf
+  FUNcluster <- function(x, k) { #this needs to be FUNcluster
+    list(cluster = kmeans(x, centers = k, #k=number of clusters
+                          nstart = n.start, #how many random sets should be chosen (this will be = centers = k)
+                          iter.max = n.iter)$cluster)
+    
+  }
+
+## GAPSTAT ##
+gapstat <- cluster::clusGap(pca_scores, FUN = FUNcluster, #function for matrix, here my pca (can't pass it a dudi.pca)
+                            K.max = max.n.clust, 
+                            B = B) #b=bootstraping, ... optional for kmeans
+
+## MAKE CLUSTERS ##
+if(choose.n.clust) { #for choosing interactively, determines location of maximum f maxSE(f, SE.f) d
+  n.clust <- cluster::maxSE(f = gapstat$Tab[, "gap"], 
+                   SE.f = gapstat$Tab[, "SE.sim"],
+                   method = criterion) 
 }
 
-res <- find.clusters.clusGap(swallowtails, stat = "gap", method = "kmeans", 
-                             max.n.clust = 11, B = 50) #gives Error in storage.mode(x) <- "double" : 'list' object cannot be coerced to type 'double'
+
+
+grp <- FUNcluster(pca_scores, k = n.clust)$cluster #groups with selected k
+
+names(grp) <- rownames(x)
+result <- list(Kstat = gapstat, stat = gapstat$Tab, grp = grp, size = table(grp))
+
+return(result)
+}
+
+
+
+res <- findclustersGAP(swallowtails, stat = "gap", method = "kmeans", 
+                             max.n.clust = 11, B = 100) 
 dapc5 <- dapc(swallowtails, res$grp)
-#retained 40 pcs, 2 linear discriminants 
+#retain 50 pcs, 2 eigs
+#$assign.prop [1] 0.4443022
 
-scatter(dapc5)
+dapc3 <- dapc(swallowtails, grp$grp)
+#we keep the first 50. 
+#we save 2 eigs
+assignplot(dapc2, subset=1:9) #pretty bad assigns 
+compoplot(dapc2, posi="bottomright", subset=1:9,
+          txt.leg=paste("Cluster", 1:9), lab="",
+          ncol=1, xlab="individuals", col=funky(9))
+
+plot5 <- scatter(dapc5)
+
+summary(dapc5)
+
+res$size 
 
 
+res2 <- findclustersGAP(swallowtails, stat = "gap", method = "kmeans", B = 100)
+dapc6 <- dapc(swallowtails, res2$grp)
+summary(dapc6) #how to make loop choose interactively like in the BIC/
 
 
+###Try another dataset
+data("microbov")
 
+#try BIC
+grp <- find.clusters(microbov, max.n.clust=50, stat = "BIC")
+#kept 200 pcs, 8 clusters 
+dapc7 <- dapc(microbov, grp$grp)
+#retained 45 pcs and 2 eigs 
+scatter(dapc7)
+
+#8 groups, .5994 score, 
+
+res3 <- findclustersGAP(microbov, stat = "gap", method = "kmeans", B = 100)
+
+dapc8 <- dapc(microbov, res3$grp)
+#9 groups, assign prop 0.5426136
+
+scatter(dapc8)
 
 
